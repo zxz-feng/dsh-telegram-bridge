@@ -1,0 +1,16 @@
+# ============================================================================
+# dsh-telegram-bridge —— 插件自带的挂载声明
+# ============================================================================
+# 装上之后，profile 只要在 dsh.profile.bundles 里列出本包名即生效
+# （`dsh plugin --profile web add <本包>` 会自动写进去）。
+#
+# 真正的用户配置在插件自己的 config.json 里（工具可改），这里只放默认值。
+# ⚠️ 默认 enabled: true 但**没有 session 就不会连** —— 装上不会抢你现有客户端的
+#    Telegram update state。要真正接管，先用 tg_login_start 登录。
+# ============================================================================
+
+- insert:
+    - id: telegram-bridge
+      name: dsh-telegram-bridge
+      config:
+        enabled: true

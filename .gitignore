@@ -1,0 +1,25 @@
+# 依赖
+node_modules/
+
+# ── 绝对不能进仓库的（泄露 = 账号被接管）──
+session.txt
+*.session
+control.json
+config.json
+.env
+.env.*
+
+# 运行时产物
+*.log
+*.log.1
+inbox.jsonl
+drafts.jsonl
+contexts/
+stickers-index.json
+login-tmp*
+
+# 编辑器 / 系统
+.DS_Store
+.idea/
+.vscode/
+*.swp

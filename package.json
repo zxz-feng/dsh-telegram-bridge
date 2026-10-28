@@ -1,0 +1,63 @@
+{
+  "name": "dsh-telegram-bridge",
+  "version": "0.1.0",
+  "description": "DSH 插件：接管一个真实 Telegram 账号（用户态 MTProto），替你回消息 —— 分层人设、贴纸、防抖、轮询兜底、零 token 自检自愈",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "telegram",
+    "mtproto",
+    "userbot"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "cordis.patch.yml",
+    "lib",
+    "bridge",
+    "persona",
+    "scripts",
+    "README.md",
+    "AGENTS.md",
+    "SECURITY.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "dsh": ">=0.2.0",
+    "node": ">=22"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-tools": "*",
+    "@deepseek-ai/schemastery": "*"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-tools": {
+      "optional": true
+    },
+    "@deepseek-ai/schemastery": {
+      "optional": true
+    }
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "^3.18.1",
+    "sharp": "^0.35.5",
+    "socks": "^2.8.10",
+    "telegram": "^2.26.22"
+  },
+  "scripts": {
+    "verify": "node scripts/verify.mjs",
+    "test": "node test/run.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}
