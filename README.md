@@ -25,6 +25,16 @@ dsh plugin --profile web add github:<你的用户名>/dsh-telegram-bridge
 
 装完**重启一次 dsh**（bundle 层要重启才组装）。
 
+> ⚠️ **如果安装报 `ERR_PNPM_IGNORED_BUILDS`**（pnpm 12 默认把"跳过的构建脚本"当错误）：
+> 三条可选依赖 `bufferutil` / `utf-8-validate` / `es5-ext` 会触发它 —— 它们都是**可选的原生加速件**，
+> 不编译也完全能用。加一个开关就行：
+>
+> ```bash
+> dsh plugin --profile web add <本仓库地址> --config.strict-dep-builds=false
+> ```
+>
+> （`dsh plugin` 会把多余参数原样转给 pnpm。装完 `dsh plugin --profile web list` 能看到本包即成功。）
+
 > ⚠️ **装上不会自动连**。没有 `session.txt` 时它就是不连接的空壳，所以不会抢你现有
 > 客户端（官方 App / 桌面版）的 update state。这条很重要：同一个账号**同一时间只能有
 > 一个客户端在收消息**，两个一起收会双开抢状态，表现是「它突然不说话」而且不报错。
@@ -145,6 +155,13 @@ test/run.mjs       零 token 离线测试（npm test）
 ```bash
 BRIDGE_HOME=/path/to/home node bridge/main.mjs
 ```
+
+## 依赖说明
+
+只装 `telegram`（MTProto）、`socks`（SOCKS5）、`sharp`（图片/贴纸压缩）、`schemastery`（配置）。
+其中 `telegram` 会带出 ws 的可选原生加速件（`bufferutil` / `utf-8-validate`）和 `es5-ext`，
+它们在 pnpm 12 上会触发 `ERR_PNPM_IGNORED_BUILDS` —— 见上面「装」那一节的一条命令。
+不编译这几个包对本插件没有任何影响。
 
 ## 已知限制
 
