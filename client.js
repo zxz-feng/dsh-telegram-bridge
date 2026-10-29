@@ -94,6 +94,7 @@ window.__ModuleLoader__.load({
   line-height:15px;white-space:pre-wrap;word-break:break-all;
   background:var(--dsw-alias-bg-layer-4,rgba(0,0,0,.25));color:var(--dsw-alias-label-secondary,#c9ccd1);}
 [data-tg-kv]{font-size:11px;line-height:18px;color:var(--dsw-alias-label-tertiary,#9aa0a6);word-break:break-all;}
+[data-tg-off]{opacity:.55;}
 [data-tg-away]{display:none !important;}
 [data-tg-qr]{display:flex;gap:12px;align-items:flex-start;}
 [data-tg-qr] img{width:150px;height:150px;border-radius:8px;background:#fff;padding:6px;}
@@ -422,13 +423,20 @@ window.__ModuleLoader__.load({
     return {
       inject: ['slots'],
       apply(ctx) {
-        const slots = ctx.slots || ctx.get?.('slots')
+        // ⚠️ 样式必须自己注入：client bundle 只负责「挂上去」，宿主不会给插件塞 CSS。
+        //    漏了这一句的表现是「能改、但丑得像没写样式」（第一版就这么翻的）。
+        const style = document.createElement('style')
+        style.setAttribute('data-plugin-css', 'dsh-telegram-bridge')
+        style.textContent = CSS
+        document.head.appendChild(style)
+        ctx.effect(() => () => style.remove(), 'dsh-telegram-bridge: 设置页样式')
+
+        const slots = (typeof ctx.get === 'function' ? ctx.get('slots') : undefined) || ctx.slots
         if (!slots) return
-        const off = slots.inject('settings.section', () => slots.register(
+        slots.inject('settings.section', () => slots.register(
           { name: 'settings.section', id: 'telegram-bridge', order: 50, label: 'Telegram 小鲸鱼' },
           () => h(Panel),
         ))
-        ctx.effect?.(() => off)
       },
     }
   },

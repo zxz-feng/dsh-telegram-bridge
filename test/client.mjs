@@ -63,8 +63,9 @@ function render(node) {
 
 /* ── 假 window / document / slots ── */
 let loaded = null
-const styleEl = { setAttribute() {}, remove() {}, textContent: '' }
-const document = { createElement: () => styleEl, head: { appendChild() {} } }
+const styles = []
+const styleEl = { attrs: {}, setAttribute(k, v) { this.attrs[k] = v }, remove() { this.removed = true }, textContent: '' }
+const document = { createElement: () => styleEl, head: { appendChild: (el) => styles.push(el) } }
 const window = { __ModuleLoader__: { load: (o) => { loaded = o } } }
 
 new Function('window', 'document', SRC)(window, document)
@@ -90,6 +91,12 @@ const ctx = {
   effect: (fn) => { const d = fn(); return () => { try { if (typeof d === 'function') d() } catch { /* 忽略 */ } } },
 }
 mod.apply(ctx)
+
+console.log('\n【样式注入】')
+ok('apply 往 head 里塞了一个 <style>', styles.length === 1, `实际=${styles.length}`)
+ok('带 data-plugin-css 标记（卸载时好认）', styleEl.attrs['data-plugin-css'] === 'dsh-telegram-bridge')
+ok('CSS 里真有规则（不是空串）', styleEl.textContent.includes('[data-tg-page]') && styleEl.textContent.length > 1500)
+ok('关键控件样式都在', ['[data-tg-sw]', '[data-tg-input]', '[data-tg-card]', '[data-tg-btn]'].every((k) => styleEl.textContent.includes(k)))
 
 console.log('\n【槽位】')
 ok('注册进 settings.section', registered?.meta?.name === 'settings.section')

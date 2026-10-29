@@ -1,6 +1,6 @@
 {
   "name": "dsh-telegram-bridge",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "DSH 插件：接管一个真实 Telegram 账号（用户态 MTProto），替你回消息 —— 分层人设、贴纸、防抖、轮询兜底、零 token 自检自愈",
   "keywords": [
     "dsh",
