@@ -166,7 +166,7 @@ export function apply(ctx, config = {}) {
   tool({
     name: 'tg_status',
     description: '看 Telegram 桥现在什么状态：进程活着没、连上没、登录的是谁、白名单几条、在途几条、人设指纹、贴纸几条。',
-    parameters: { type: 'object', properties: {}, additionalProperties: false },
+    parameters: {},
     async execute() {
       cfg = loadConfig(home)
       const supInfo = sup.info()
@@ -194,7 +194,7 @@ export function apply(ctx, config = {}) {
   tool({
     name: 'tg_verify',
     description: '跑一遍自检（零 token，不调模型）：进程/连接/代理/登录态/卡死/家目录。能修的会当场修，输出「n/6 通过」。',
-    parameters: { type: 'object', properties: {}, additionalProperties: false },
+    parameters: {},
     async execute() {
       cfg = loadConfig(home)
       const r = await runChecks({
@@ -219,9 +219,7 @@ export function apply(ctx, config = {}) {
       + '{ "socksUrl": "socks5://127.0.0.1:7890" }、{ "direct": { "users": ["123456"], "paused": [] } }、'
       + '{ "llm": { "baseUrl": "...", "apiKey": "...", "models": ["deepseek-v4.1-flash"] } }',
     parameters: {
-      type: 'object',
-      properties: { patch: { type: 'object', additionalProperties: true, description: '要改的字段（可省）' } },
-      additionalProperties: false,
+      patch: { type: 'object', additionalProperties: true, description: '要改的字段（可省）' },
     },
     async execute({ patch }) {
       cfg = patch ? saveConfig(home, patch) : loadConfig(home)
@@ -235,10 +233,7 @@ export function apply(ctx, config = {}) {
     description: '开始登录：传手机号（国际格式，例 +8613800138000）。会往那个号的 Telegram 发验证码，'
       + '返回 loginId，然后立刻用 tg_login_code 把码填回来。apiId/apiHash 要先在 tg_config 里填好。',
     parameters: {
-      type: 'object',
-      properties: { phone: { type: 'string', description: '手机号，国际格式带 +' } },
-      required: ['phone'],
-      additionalProperties: false,
+      phone: { required: true, type: 'string', description: '手机号，国际格式带 +' },
     },
     async execute({ phone }) {
       cfg = loadConfig(home)
@@ -258,13 +253,7 @@ export function apply(ctx, config = {}) {
     name: 'tg_login_code',
     description: '把 Telegram 发来的验证码填进去。可能还会要两步验证密码，那就接着用 tg_login_password。',
     parameters: {
-      type: 'object',
-      properties: {
-        loginId: { type: 'string', description: 'tg_login_start 返回的那个 id' },
-        code: { type: 'string', description: '验证码（纯数字）' },
-      },
-      required: ['loginId', 'code'],
-      additionalProperties: false,
+      loginId: { required: true, type: 'string', description: 'tg_login_start 返回的那个 id' },
     },
     async execute({ loginId, code }) {
       const state = logins.get(loginId)
@@ -283,13 +272,7 @@ export function apply(ctx, config = {}) {
     name: 'tg_login_password',
     description: '两步验证密码（开了 2FA 的账号才需要）。',
     parameters: {
-      type: 'object',
-      properties: {
-        loginId: { type: 'string' },
-        password: { type: 'string' },
-      },
-      required: ['loginId', 'password'],
-      additionalProperties: false,
+      loginId: { required: true, type: 'string' },
     },
     async execute({ loginId, password }) {
       const state = logins.get(loginId)
@@ -307,10 +290,7 @@ export function apply(ctx, config = {}) {
     name: 'tg_login_cancel',
     description: '取消正在进行的登录。',
     parameters: {
-      type: 'object',
-      properties: { loginId: { type: 'string' } },
-      required: ['loginId'],
-      additionalProperties: false,
+      loginId: { required: true, type: 'string' },
     },
     async execute({ loginId }) {
       const state = logins.get(loginId)
@@ -323,7 +303,7 @@ export function apply(ctx, config = {}) {
   tool({
     name: 'tg_chats',
     description: '列出白名单会话 + 每个会话的上下文轮数。',
-    parameters: { type: 'object', properties: {}, additionalProperties: false },
+    parameters: {},
     async execute() {
       cfg = loadConfig(home)
       let list = []
@@ -347,13 +327,7 @@ export function apply(ctx, config = {}) {
     description: '用这个账号给某个会话发一条消息。⚠️ 走的是 bridge 自己那条连接（不会抢 session），'
       + '所以一次只能有一个客户端收消息这条铁律在这里是天然成立的。',
     parameters: {
-      type: 'object',
-      properties: {
-        chatId: { type: 'string', description: '会话 id（用户 id 或 -100 开头的群 id）' },
-        text: { type: 'string', description: '要发的内容' },
-      },
-      required: ['chatId', 'text'],
-      additionalProperties: false,
+      chatId: { required: true, type: 'string', description: '会话 id（用户 id 或 -100 开头的群 id）' },
     },
     async execute({ chatId, text }) {
       return await sup.call('send', { chatId, text }, { timeoutMs: 40000 })
@@ -364,13 +338,7 @@ export function apply(ctx, config = {}) {
     name: 'tg_pause',
     description: '暂停/恢复某个会话的自动回复（消息照记录，只是不回）。改完即时生效。',
     parameters: {
-      type: 'object',
-      properties: {
-        chatId: { type: 'string' },
-        paused: { type: 'boolean', description: 'true=暂停（默认），false=恢复' },
-      },
-      required: ['chatId'],
-      additionalProperties: false,
+      chatId: { required: true, type: 'string' },
     },
     async execute({ chatId, paused = true }) {
       try { return await sup.call('pause', { chatId, paused }, { timeoutMs: 8000 }) } catch {
@@ -387,10 +355,7 @@ export function apply(ctx, config = {}) {
     name: 'tg_context_clear',
     description: '清掉某个会话的上下文（下次对话会重新注入一次历史背景）。',
     parameters: {
-      type: 'object',
-      properties: { chatId: { type: 'string' } },
-      required: ['chatId'],
-      additionalProperties: false,
+      chatId: { required: true, type: 'string' },
     },
     async execute({ chatId }) {
       try { return await sup.call('context_clear', { chatId }, { timeoutMs: 8000 }) } catch (e) {
@@ -402,7 +367,7 @@ export function apply(ctx, config = {}) {
   tool({
     name: 'tg_restart',
     description: '优雅重启 bridge 子进程（会等在途回复发完再重启）。',
-    parameters: { type: 'object', properties: {}, additionalProperties: false },
+    parameters: {},
     async execute() {
       const r = await sup.restart('工具请求')
       return { ok: Boolean(r), process: sup.info() }
@@ -413,9 +378,7 @@ export function apply(ctx, config = {}) {
     name: 'tg_log',
     description: '看 bridge 日志最后几十行（排查用）。',
     parameters: {
-      type: 'object',
-      properties: { lines: { type: 'natural', description: '要几行，默认 40，最多 200' } },
-      additionalProperties: false,
+      lines: { type: 'integer', description: '要几行，默认 40，最多 200' },
     },
     async execute({ lines = 40 }) {
       const n = Math.min(200, Math.max(10, Number(lines) || 40))
