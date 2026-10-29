@@ -1,6 +1,6 @@
 {
   "name": "dsh-telegram-bridge",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "DSH 插件：接管一个真实 Telegram 账号（用户态 MTProto），替你回消息 —— 分层人设、贴纸、防抖、轮询兜底、零 token 自检自愈",
   "keywords": [
     "dsh",
@@ -15,15 +15,18 @@
   "main": "index.js",
   "exports": {
     ".": "./index.js",
+    "./client": "./client.js",
     "./package.json": "./package.json"
   },
   "files": [
     "index.js",
+    "client.js",
     "cordis.patch.yml",
     "lib",
     "bridge",
     "persona",
     "scripts",
+    "test",
     "README.md",
     "AGENTS.md",
     "SECURITY.md",
@@ -53,11 +56,19 @@
   },
   "scripts": {
     "verify": "node scripts/verify.mjs",
-    "test": "node test/run.mjs"
+    "test": "node test/run.mjs && node test/api.mjs && node test/client.mjs"
   },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-settings-plugins"
+      ]
     }
   }
 }

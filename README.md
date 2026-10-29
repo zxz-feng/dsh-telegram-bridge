@@ -89,6 +89,31 @@ tg_config { "socksUrl": "socks5://127.0.0.1:7890" }
 { "llm": { "models": ["deepseek-v4.1-flash", "hy3"], "effortFull": "max", "effortShort": "low" } }
 ```
 
+## 设置页
+
+装好之后 DSH 的「设置」里会多一栏 **Telegram 小鲸鱼**（和「刷B站」「QQ 小鲸鱼」并排），
+不用记工具名、不用改 JSON：
+
+| 区块 | 能干什么 |
+|---|---|
+| 总开关 | 一键停/起桥（关掉 = 子进程停掉，配置和登录态都留着） |
+| 现在什么状态 | 连没连上、登录的是谁、白名单几个、在途几条、人设指纹、今天收发计数 |
+| 连接与模型 | SOCKS5 代理、回话模式（auto/draft/confirm）、模型链、每条字数上限、记多少轮上下文 |
+| 账号 | apiId / apiHash，**手机号登录三步**（发验证码 → 填码 → 两步密码），全程不出这个页面 |
+| 谁能跟她说上话 | 一人一行：备注、暂停/恢复、清上下文、移出名单；私聊与群聊各自的开关 |
+| 运维 | 跑自检、看日志、重启桥 |
+
+几条设计上的规矩（踩过坑才这么定的）：
+
+- **打码字段原样存回 = 没改**。apiHash 显示成 `••••6789`，你不动它保存，文件里还是原值
+  （否则一保存就把真 key 冲成打码串，下次登录直接废）。
+- **钳位以服务端为准**。前端只标范围，填 99999 也会被压回上限 —— 页面能骗，落盘不会。
+- **只接同源请求**。别的网页在你浏览器里也能打 `127.0.0.1`，所以跨站一律 403。
+- **改完不用重启**。保存即生效：桥每条消息前都会重读配置。
+
+设置页背后就是 `index.js` 里那组 `/api/tg-bridge/*` 路由，和 `tg_*` 工具共用同一套实现
+（`lib/api.mjs`）—— 所以「页面上能改的」和「工具能改的」永远是一回事。
+
 ## 人设
 
 人设只有一份，在 `<DSH_HOME>/persona/`（首次启用会把插件自带的默认值铺过去）：
@@ -129,8 +154,11 @@ node scripts/verify.mjs --fix   # 能修的顺手修（拉起进程、轮转日�
 ## 结构
 
 ```
-index.js           宿主半：托管子进程 + 工具 + 周期自检
+index.js           宿主半：托管子进程 + 工具 + 设置页路由 + 周期自检
+client.js          设置页浏览器半端（自注册 bundle：window.__ModuleLoader__）
 lib/               跨插件复用：deps（optional peer）/ home / supervisor / health / protocol
+  api.mjs          数据面：工具与 HTTP 路由共用的唯一实现
+  http.mjs         sendJson / readBody / 同源判定 / 打码回写
 bridge/            子进程（**也可以单独跑**）
   main.mjs         主循环：连接 → 补漏 → 监听 → 防抖 → 生成 → 发送 → 轮询兜底
   config.mjs       配置合并钳位 + 老文件迁移
@@ -146,7 +174,9 @@ bridge/            子进程（**也可以单独跑**）
   control.mjs      本机回环控制口（127.0.0.1 + token）
   login.mjs        交互式登录（行 JSON）
 scripts/           verify / import-stickers
-test/run.mjs       零 token 离线测试（npm test）
+test/run.mjs       零 token 离线测试：桥逻辑
+test/api.mjs       零 token 离线测试：设置页路由（钳位 / 脱敏 / 同源 / 坏 body）
+test/client.mjs    零 token 冒烟：假 React 把设置页渲染一遍
 ```
 
 **为什么子进程**：GramJS 的 update loop 遇到网络抖动会抛未捕获异常，塞进宿主会把整个 DSH 带下水；
