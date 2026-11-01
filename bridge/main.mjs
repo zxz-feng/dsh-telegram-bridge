@@ -126,7 +126,10 @@ function randomDelay() {
 async function handleOne(m, event) {
   try {
     reloadCfg()
-    if (!m || m.out) return
+    if (!m) return
+    // 收藏夹（Saved Messages）里自己发的消息 out=true，但那是我方的输入，得回；
+    // 别的会话里 out=true 就是她自己发的，跳过。
+    if (m.out && String(m.chatId ?? '') !== String(client?.__selfId ?? '')) return
     if (sentIds.has(m.id)) return
     if (m.sender?.bot === true) return
     seenIds.add(m.id)
@@ -316,7 +319,8 @@ async function pollMissed() {
       const recent = []
       for await (const m of client.iterMessages(peer, { limit: 4 })) recent.push(m)
       const missed = recent
-        .filter((m) => !m.out && !sentIds.has(m.id) && !seenIds.has(m.id))
+        .filter((m) => (!m.out || String(chatId) === String(client?.__selfId ?? ''))
+          && !sentIds.has(m.id) && !seenIds.has(m.id))
         .sort((a, b) => a.id - b.id)
       if (!missed.length) continue
       log(`[poll] 事件流漏了 ${missed.length} 条（${chatId}），补处理`)

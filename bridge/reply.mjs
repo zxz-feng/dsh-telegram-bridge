@@ -48,6 +48,25 @@ function stickerTags(home) {
   return tagCache
 }
 
+/**
+ * 一次性指令：`<home>/disclose.json` 里写了哪个 chatId，就只对这一条生效，
+ * 用完立刻删掉。用途：主人让「这一次要说明身份」「这一次别开玩笑了」这类。
+ *   { "8079117108": "这一条要主动说明你是替涅槃周看号的 AI，不是他本人" }
+ */
+function takeOneShot(home, chatId) {
+  const file = join(home, 'disclose.json')
+  if (!existsSync(file)) return ''
+  try {
+    const all = JSON.parse(readFileSync(file, 'utf8'))
+    const key = String(chatId)
+    const msg = all?.[key]
+    if (!msg) return ''
+    delete all[key]
+    writeFileSync(file, JSON.stringify(all, null, 2))
+    return typeof msg === 'string' ? msg : '这一条要按主人要求做'
+  } catch { return '' }
+}
+
 function buildPrompt(cfg, pdir, home, useFull) {
   const base = useFull ? fullPersona(cfg, pdir) : shortPersona(cfg, pdir)
   if (cfg.sticker?.enabled === false) return base
@@ -96,12 +115,15 @@ export async function generateReply({ cfg, home, pdir, chatId, incoming, peerNam
   const useFull = isFirst || needReanchor || personaChanged
 
   const userText = String(incoming ?? '').slice(0, cfg.llm.maxChars)
+  const oneShot = takeOneShot(home, chatId)
   const messages = [
     { role: 'system', content: buildPrompt(cfg, pdir, home, useFull) },
     ...ctx,
     { role: 'user', content: peerName ? `[${peerName}] ${userText}` : userText },
+    ...(oneShot ? [{ role: 'system', content: `【这一条必须做到】${oneShot}` }] : []),
     { role: 'system', content: anchor(cfg) },
   ]
+  if (oneShot) console.log(`  [tg] ${chatId} 一次性指令：${oneShot.slice(0, 30)}…`)
 
   if (isFirst) console.log(`  [tg] ${chatId} 首次对话 → 完整人设`)
   else if (personaChanged) console.log(`  [tg] ${chatId} 人设已改动 → 补发完整人设`)
