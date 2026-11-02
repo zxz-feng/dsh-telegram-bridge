@@ -40,6 +40,25 @@ export const OBSERVE_DEFAULTS = {
 
 const LINK_RE = /https?:\/\/[^\s<>"']+/g
 
+/** 他这句话像不像"在指挥机器人"：命令、@某bot、踢人/禁言这类动作词 */
+export function looksLikeBotCommand(text) {
+  const t = String(text || '').trim()
+  if (!t) return false
+  if (/^[/!]/.test(t)) return true                                   // /kick、!ban
+  if (/@[A-Za-z0-9_]{2,}bot\b/i.test(t)) return true                  // @xxx_bot
+  if (/(踢|禁言|撤回|封禁|警告|ban|kick|mute|warn|purge)/i.test(t)) return true
+  return false
+}
+
+/** 引用一条消息时，没文字就给个占位（广告常常只有图/链接预览） */
+function quotedText(o) {
+  if (!o) return ''
+  const t = String(o.text || '').trim()
+  if (t) return t
+  const k = o.kind && o.kind !== 'text' ? o.kind : '空消息'
+  return `[${k}]`
+}
+
 /** 读观察配置；文件不存在就用默认（默认关） */
 export function loadObserveCfg(home) {
   const file = join(home, 'observe.json')
@@ -95,6 +114,8 @@ export function makeObserver({ home, log = () => {} }) {
   const ring = new Map()
   let lastPrune = 0
   let digestBusy = false
+  /** chatId → { ts, id, text } 他上一条消息（用来判断机器人是不是在回应他） */
+  const lastHim = new Map()
 
   function ringOf(chatId) {
     if (!ring.has(chatId)) ring.set(chatId, [])
@@ -160,17 +181,34 @@ export function makeObserver({ home, log = () => {} }) {
       if (ringOf(chatId).length > 30) ringOf(chatId).shift()
     }
 
+    // 机器人消息：不记时间线，但如果是"他在指挥机器人"的回应，要留痕
+    // （场景：管理员引用广告消息、用指令召唤 bot 踢人 —— 光看他那句命令
+    //   不知道结果，下次私聊就会问"你刚踢了谁"这种蠢问题）
+    if ((isBot || via) && !cfg.targets.includes(from)) {
+      const prev = lastHim.get(chatId)
+      const fresh = prev && Date.now() - new Date(prev.ts).getTime() < 90_000
+      const isReplyToHim = prev && replyTo && String(replyTo) === String(prev.id)
+      if (fresh && (isReplyToHim || looksLikeBotCommand(prev.text))) {
+        appendFileSync(join(dir, 'his.jsonl'), JSON.stringify({
+          ts: row.ts, chat: chatId, role: 'bot', forTs: prev.ts,
+          name, text: row.text.slice(0, 200),
+        }) + '\n')
+        log(`[observe] 记下机器人回应：${row.text.slice(0, 30)}`)
+      }
+    }
+
     // 索引层：只记重点人物
     if (cfg.targets.includes(from) && !isBot) {
       let quoted = null
       if (replyTo) {
         // 先在原始层里找（绝大多数能命中，零 API 调用）
         quoted = findInFile(join(dir, `${chatId}.jsonl`), replyTo)
-        if (quoted) quoted = { name: quoted.name, text: quoted.text }
+        if (quoted) quoted = { name: quoted.name, text: quotedText(quoted) }
       }
       const his = {
         ts: row.ts,
         chat: chatId,
+        role: 'him',
         text: row.text,
         links: row.links,
         kind,
@@ -178,6 +216,7 @@ export function makeObserver({ home, log = () => {} }) {
         reply: quoted,
       }
       appendFileSync(join(dir, 'his.jsonl'), JSON.stringify(his) + '\n')
+      lastHim.set(chatId, { ts: row.ts, id: String(m?.id ?? ''), text: row.text })
       log(`[observe] 记下他的一句：${row.text.slice(0, 30)}${quoted ? '（有引用）' : ''}`)
     }
 
@@ -227,45 +266,6 @@ export function makeObserver({ home, log = () => {} }) {
   /** 私聊时注入的背景块（委托给模块级实现，方便 reply.mjs 直接用） */
   function promptBlock(chatId, cfg) {
     return buildObserveBlock(home, chatId, cfg)
-  }
-
-  function _unusedPromptBlock(chatId, cfg) {
-    if (!cfg?.enabled) return ''
-    if (!cfg.targets.includes(String(chatId))) return ''
-    const hisFile = join(dir, 'his.jsonl')
-    if (!existsSync(hisFile)) return ''
-
-    const cut = Date.now() - cfg.keepDays * 86400_000
-    const rows = []
-    for (const ln of readFileSync(hisFile, 'utf8').split('\n')) {
-      if (!ln) continue
-      try {
-        const o = JSON.parse(ln)
-        if (new Date(o.ts).getTime() >= cut) rows.push(o)
-      } catch { /* 坏行 */ }
-    }
-    if (!rows.length) return ''
-    const take = rows.slice(-cfg.injectLines)
-
-    const fmt = (iso) => {
-      const d = new Date(iso)
-      const md = `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-      const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-      return dayKey(d) === dayKey() ? hm : `${md} ${hm}`
-    }
-
-    const lines = take.map((o) => {
-      let s = `· ${fmt(o.ts)} 他：${o.text.slice(0, 60)}`
-      if (o.reply) s += `\n  ↳ 回的是 ${o.reply.name} 说的「${o.reply.text.slice(0, 40)}」`
-      else if (o.around?.length) s += `\n  ↳ 当时在聊：${o.around[o.around.length - 1].slice(0, 40)}`
-      return s
-    })
-
-    const dig = readDigest()
-    const digLine = dig?.text ? `\n【群里最近的气氛】\n${dig.text.slice(0, 400)}` : ''
-
-    return `\n\n【他最近在群里（只是背景，别像汇报监控，一次最多自然提一条）】\n`
-      + lines.join('\n') + digLine
   }
 
   /**
@@ -355,12 +355,18 @@ export function buildObserveBlock(home, chatId, cfg) {
     return dayKey(d) === dayKey() ? hm : `${md} ${hm}`
   }
 
-  const lines = take.map((o) => {
+  const lines = []
+  for (const o of take) {
+    if (o.role === 'bot') {
+      // 机器人回应挂在"他那句命令"下面，不单独占一行（否则看起来像他在说话）
+      if (lines.length) lines[lines.length - 1] += `\n  ↳ 机器人回应：${String(o.text).slice(0, 50)}`
+      continue
+    }
     let s = `· ${fmt(o.ts)} 他：${String(o.text).slice(0, 60)}`
     if (o.reply) s += `\n  ↳ 回的是 ${o.reply.name} 说的「${String(o.reply.text).slice(0, 40)}」`
     else if (o.around?.length) s += `\n  ↳ 当时在聊：${String(o.around[o.around.length - 1]).slice(0, 40)}`
-    return s
-  })
+    lines.push(s)
+  }
 
   let digLine = ''
   const df = join(dir, 'digest.json')

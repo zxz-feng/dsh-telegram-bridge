@@ -5,7 +5,7 @@
 import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { makeObserver, loadObserveCfg, buildObserveBlock, OBSERVE_DEFAULTS } from '../bridge/observe.mjs'
+import { makeObserver, loadObserveCfg, buildObserveBlock, looksLikeBotCommand, OBSERVE_DEFAULTS } from '../bridge/observe.mjs'
 
 let pass = 0
 let fail = 0
@@ -27,6 +27,7 @@ const cfg = {
 }
 
 const obs = makeObserver({ home, log: () => {} })
+const appendRaw = (o) => writeFileSync(join(home, 'observe', `${GROUP}.jsonl`), readFileSync(join(home, 'observe', `${GROUP}.jsonl`), 'utf8') + JSON.stringify(o) + '\n')
 
 const mk = (o) => ({
   chatId: o.chatId ?? GROUP,
@@ -102,6 +103,41 @@ ok('坏配置退回默认', (() => {
   writeFileSync(join(home, 'observe.json'), '{ 这不是 json')
   return loadObserveCfg(home).enabled === OBSERVE_DEFAULTS.enabled
 })())
+
+
+// 11. 他指挥机器人：命令 + 机器人回应，要留痕
+ok('命令识别：/kick', looksLikeBotCommand('/kick 123') === true)
+ok('命令识别：@xxx_bot', looksLikeBotCommand('@jjbot 踢了他') === true)
+ok('命令识别：普通聊天不算', looksLikeBotCommand('今天天气不错') === false)
+
+obs.record(mk({ id: '20', senderId: HE, name: '烛天', text: '@jjbot 把这个人踢了' }), cfg)
+obs.record(mk({ id: '21', senderId: '900', name: 'JJBot', bot: true, text: '已禁言该用户 10 分钟', replyTo: '20' }), cfg)
+const hisFile2 = join(home, 'observe', 'his.jsonl')
+const rows2 = readFileSync(hisFile2, 'utf8').trim().split('\n').map(JSON.parse)
+const botRow = rows2.find((r) => r.role === 'bot')
+ok('机器人回应被记进 his', !!botRow && botRow.text.includes('已禁言'))
+ok('机器人回应绑定到他那条', botRow && botRow.forTs === rows2.find((r) => r.id === undefined && r.text.startsWith('@jjbot')).ts)
+const blk2 = buildObserveBlock(home, HE, cfg)
+ok('注入块里机器人挂在命令下面',
+  blk2.indexOf('机器人回应：已禁言') > blk2.indexOf('@jjbot 把这个人踢了')
+  && blk2.indexOf('机器人回应：已禁言') - blk2.indexOf('@jjbot 把这个人踢了') < 200, '\n' + blk2)
+ok('机器人不冒充他说话', !/他：已禁言/.test(blk2))
+
+// 12. 他没下命令时，机器人自己刷屏不该记
+obs.record(mk({ id: '30', senderId: HE, name: '烛天', text: '今天天气不错' }), cfg)
+const before = readFileSync(hisFile2, 'utf8').trim().split('\n').length
+obs.record(mk({ id: '31', senderId: '901', name: '签到机器人', bot: true, text: '签到成功 +1' }), cfg)
+const after2 = readFileSync(hisFile2, 'utf8').trim().split('\n').length
+ok('无关机器人不进 his', after2 === before, `${before} → ${after2}`)
+
+// 13. 引用一条没有文字的广告图
+obs.record(mk({ id: '40', senderId: '777', name: '广告号', text: '' }), cfg)
+const adLine = { ts: new Date().toISOString(), id: '40', from: '777', name: '广告号', bot: 0, via: '', fwd: 0, kind: 'photo', text: '', links: [] }
+appendRaw(adLine)
+obs.record(mk({ id: '41', senderId: HE, name: '烛天', text: '这广告又来了', replyTo: '40' }), cfg)
+const rows3 = readFileSync(hisFile2, 'utf8').trim().split('\n').map(JSON.parse)
+const quotedRow = rows3.find((r) => r.text === '这广告又来了')
+ok('引用空文本广告 → 占位', quotedRow && quotedRow.reply && quotedRow.reply.text === '[photo]', JSON.stringify(quotedRow?.reply))
 
 rmSync(home, { recursive: true, force: true })
 console.log(`\n===== ${fail === 0 ? '✓ 观察器' : '✗ 观察器'} ${pass} 通过 / ${fail} 失败 =====`)
