@@ -139,6 +139,20 @@ const rows3 = readFileSync(hisFile2, 'utf8').trim().split('\n').map(JSON.parse)
 const quotedRow = rows3.find((r) => r.text === '这广告又来了')
 ok('引用空文本广告 → 占位', quotedRow && quotedRow.reply && quotedRow.reply.text === '[photo]', JSON.stringify(quotedRow?.reply))
 
+
+// 14. 真实场景复刻（主人截图）：引用广告「斩」→ /spam@nmmnfunbot → nmBot 回他
+obs.record(mk({ id: '50', senderId: '666', name: '皇太后 ♡⭐', text: '斩' }), cfg)
+obs.record(mk({ id: '51', senderId: HE, name: '烛天', text: '/spam@nmmnfunbot', replyTo: '50' }), cfg)
+obs.record(mk({ id: '52', senderId: '902', name: 'nmBot', bot: true,
+  text: '皇太后 ♡⭐ 被管理员 烛天 封禁并向 nmBot 举报。回复此消息可对用户进行其他操作。', replyTo: '51' }), cfg)
+const rows4 = readFileSync(hisFile2, 'utf8').trim().split('\n').map(JSON.parse)
+const spam = rows4.find((r) => r.text === '/spam@nmmnfunbot')
+ok('复刻：引用广告被记下', spam && spam.reply && spam.reply.text === '斩')
+const nm = rows4.filter((r) => r.role === 'bot').pop()
+ok('复刻：nmBot 的封禁结果被记下', nm && nm.text.includes('封禁'))
+const blk3 = buildObserveBlock(home, HE, cfg)
+ok('复刻：注入里能看到「封禁」', blk3.includes('封禁') && blk3.indexOf('封禁') > blk3.indexOf('/spam@nmmnfunbot'))
+
 rmSync(home, { recursive: true, force: true })
 console.log(`\n===== ${fail === 0 ? '✓ 观察器' : '✗ 观察器'} ${pass} 通过 / ${fail} 失败 =====`)
 process.exit(fail === 0 ? 0 : 1)
