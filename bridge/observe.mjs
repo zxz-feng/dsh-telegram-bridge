@@ -227,7 +227,8 @@ export function makeObserver({ home, log = () => {} }) {
   function findInFile(file, id) {
     try {
       const lines = readFileSync(file, 'utf8').split('\n')
-      for (let i = lines.length - 1; i >= Math.max(0, lines.length - 400); i--) {
+      // 全文件回扫（7 天上限 ~7000 行，1MB 以内，比漏掉被引用的那条划算）
+      for (let i = lines.length - 1; i >= 0; i--) {
         if (!lines[i]) continue
         try {
           const o = JSON.parse(lines[i])
