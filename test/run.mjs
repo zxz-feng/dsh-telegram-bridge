@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { normalize, DEFAULTS } from '../bridge/config.mjs'
 import { ensurePersonaDir, fullPersona, shortPersona, anchor, personaVersion, personaSizes } from '../bridge/persona.mjs'
-import { parseReply } from '../bridge/reply.mjs'
+import { parseReply, looksLost } from '../bridge/reply.mjs'
 import { runChecks } from '../lib/health.mjs'
 import { T, ACTIONS } from '../lib/protocol.mjs'
 
@@ -181,3 +181,10 @@ if (fail) {
   process.exit(1)
 }
 console.log('全部通过（零 token，没连网）')
+
+console.log('===== 翻历史判定 =====')
+ok('「翻不了记录」要重答', looksLost('那个链接我手里没有，翻不了记录。') === true)
+ok('「看不到历史」要重答', looksLost('我这边看不到历史消息') === true)
+ok('「你自己往上翻」要重答', looksLost('你自己往上翻翻看') === true)
+ok('「我不记得了」不重答', looksLost('哈哈我不记得了') === false)
+ok('正常回复不重答', looksLost('刚那个链接我发你了') === false)

@@ -215,6 +215,24 @@ async function flushInner(chatId, entry) {
   log(`  模式 ${cfg.mode}，生成中（聚合 ${entry.msgs.length} 条）…`)
   const result = await generateReply({
     cfg, home: HOME, pdir, chatId, incoming: combined, peerName: entry.peerName,
+    // 她说"翻不了历史"时用这个捞一次原始消息（含她自己发过的）
+    fetchHistory: async (limit = 50) => {
+      try {
+        const peer = await client.getInputEntity(chatId)
+        const out = []
+        for await (const m of client.iterMessages(peer, { limit })) {
+          const t = String(m.text || (m.media ? '[媒体]' : '')).trim()
+          if (!t) continue
+          const d = new Date((m.date || 0) * 1000)
+          const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+          out.push(`${hm} ${m.out ? '我' : (m.sender?.firstName ?? '他')}: ${t.slice(0, 80)}`)
+        }
+        return out.reverse().join('\n')
+      } catch (e) {
+        log('  翻历史失败:', e?.message ?? e)
+        return ''
+      }
+    },
   })
   if (!result?.parts?.length && !result?.stickers?.length) {
     log('  ❌ 模型返回空')

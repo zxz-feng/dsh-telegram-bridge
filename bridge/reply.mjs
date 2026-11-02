@@ -68,6 +68,14 @@ function takeOneShot(home, chatId) {
   } catch { return '' }
 }
 
+/**
+ * 她说"翻不了历史/查不到"——这种情况用 TG 原始消息重答一次。
+ * 判据刻意窄：只认这些明确的"我没有记录"句式，不碰"我不记得了"这种玩笑话。
+ */
+export function looksLost(text) {
+  return /翻不了|看不到(历史|记录)|没有(聊天)?记录|你(自己)?往上(翻|滑)|查不到|我这边(没有|没存)/.test(String(text || ''))
+}
+
 function buildPrompt(cfg, pdir, home, useFull) {
   const base = useFull ? fullPersona(cfg, pdir) : shortPersona(cfg, pdir)
   if (cfg.sticker?.enabled === false) return base
@@ -104,7 +112,7 @@ export function parseReply(raw, { maxParts = 3 } = {}) {
  * @param {string} o.incoming 对方发来的文本
  * @param {string} [o.peerName]
  */
-export async function generateReply({ cfg, home, pdir, chatId, incoming, peerName = '' }) {
+export async function generateReply({ cfg, home, pdir, chatId, incoming, peerName = '', fetchHistory = null }) {
   const store = loadStore(home, chatId)
   const ctx = store.msgs
   const pv = personaVersion(pdir)
@@ -137,7 +145,34 @@ export async function generateReply({ cfg, home, pdir, chatId, incoming, peerNam
 
   const effort = useFull ? cfg.llm.effortFull : cfg.llm.effortShort
   const { text: raw, model, usage } = await chat(cfg, messages, { effort })
-  const { parts, stickers } = parseReply(raw)
+  let { parts, stickers } = parseReply(raw)
+
+  // 她说"翻不了历史" → 拉一次 TG 原始消息重答（只在能取到历史时）
+  if (fetchHistory && parts.length && looksLost(parts.join(' '))) {
+    try {
+      const hist = await fetchHistory(50)
+      if (hist) {
+        const retry = await chat(cfg, [
+          ...messages,
+          { role: 'assistant', content: parts.join(' ') },
+          {
+            role: 'system',
+            content: `【刚查到的聊天记录（最近的，越往下越新）】\n${hist}\n\n`
+              + '现在你看得到了。重新回答他，直接说事，别再讲"翻不了/没有记录"。',
+          },
+        ], { effort: cfg.llm.effortShort })
+        const r2 = parseReply(retry.text)
+        if (r2.parts.length) {
+          console.log(`  [tg] 说"不知道" → 翻历史重答（记录 ${hist.length} 字）`)
+          parts = r2.parts
+          stickers = r2.stickers
+        }
+      }
+    } catch (e) {
+      console.log('  [tg] 翻历史失败:', e?.message ?? e)
+    }
+  }
+
   const joined = parts.join(' ')
 
   console.log(`  [tg] ${model} | 人设${useFull ? '全' : '简'} | ${usageLine(usage, effort)}`
