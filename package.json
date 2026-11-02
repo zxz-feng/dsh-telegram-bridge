@@ -56,7 +56,7 @@
   },
   "scripts": {
     "verify": "node scripts/verify.mjs",
-    "test": "node test/run.mjs && node test/api.mjs && node test/client.mjs"
+    "test": "node test/run.mjs && node test/api.mjs && node test/client.mjs && node test/observe.mjs"
   },
   "dsh": {
     "bundle": {

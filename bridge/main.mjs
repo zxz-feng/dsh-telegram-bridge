@@ -28,6 +28,7 @@ import { generateReply, seedContext, contextInfo, clearContext } from './reply.m
 import { sendSticker, stickerCount } from './sticker.mjs'
 import { backfill } from './backfill.mjs'
 import { startControl } from './control.mjs'
+import { makeObserver, loadObserveCfg } from './observe.mjs'
 import { T } from '../lib/protocol.mjs'
 
 // ── 家目录 & 配置 ─────────────────────────────────────
@@ -62,6 +63,9 @@ const seededChats = new Set()
 const counters = { received: 0, replied: 0, failed: 0, skipped: 0 }
 
 const log = (...a) => console.log(...a)
+
+// 群聊观察（只记录、不参与回复）。配置在 <home>/observe.json
+const observer = makeObserver({ home: HOME, log })
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
 function send(m, cb) {
@@ -127,6 +131,11 @@ async function handleOne(m, event) {
   try {
     reloadCfg()
     if (!m) return
+    // 观察：先记下来再走后续所有过滤（机器人过滤在下面，所以这里必须更早）
+    try {
+      const oc = loadObserveCfg(HOME)
+      if (observer.record(m, oc) && oc.dailyDigest) void observer.maybeDigest(oc, cfg)
+    } catch (e) { log('[observe]', e?.message ?? e) }
     // 收藏夹（Saved Messages）里自己发的消息 out=true，但那是我方的输入，得回；
     // 别的会话里 out=true 就是她自己发的，跳过。
     if (m.out && String(m.chatId ?? '') !== String(client?.__selfId ?? '')) return
@@ -289,6 +298,9 @@ async function connect() {
     }
     log(`已种入历史 id ${seenIds.size} 条`)
   } catch (e) { log('种入历史 id 失败:', e?.message ?? e) }
+
+  // 观察器预热：把每个群最后几条读回内存，重启后第一条也能带上上下文
+  try { observer.warm(loadObserveCfg(HOME)) } catch (e) { log('[observe] 预热失败:', e?.message ?? e) }
 
   client.addEventHandler(async (event) => { await handleOne(event.message, event) }, new NewMessage({}))
   log('监听中…')

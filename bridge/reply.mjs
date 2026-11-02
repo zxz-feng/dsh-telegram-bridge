@@ -13,6 +13,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { chat, usageLine } from './llm.mjs'
 import { fullPersona, shortPersona, anchor, personaVersion, personaSizes } from './persona.mjs'
+import { buildObserveBlock, loadObserveCfg } from './observe.mjs'
 import { allTags } from './sticker.mjs'
 
 function ctxDir(home) {
@@ -116,8 +117,13 @@ export async function generateReply({ cfg, home, pdir, chatId, incoming, peerNam
 
   const userText = String(incoming ?? '').slice(0, cfg.llm.maxChars)
   const oneShot = takeOneShot(home, chatId)
+  // 群聊观察：只在重点人物的私聊里注入，且只是背景（别像汇报监控）
+  let obs = ''
+  try { obs = buildObserveBlock(home, chatId, loadObserveCfg(home)) } catch { obs = '' }
+
   const messages = [
     { role: 'system', content: buildPrompt(cfg, pdir, home, useFull) },
+    ...(obs ? [{ role: 'system', content: obs.trim() }] : []),
     ...ctx,
     { role: 'user', content: peerName ? `[${peerName}] ${userText}` : userText },
     ...(oneShot ? [{ role: 'system', content: `【这一条必须做到】${oneShot}` }] : []),
