@@ -42,6 +42,12 @@ export function parseSing(text) {
   return m ? strip(m[1]) : ''
 }
 
+/** 一句话是不是点唱（含不给歌名的）—— 主人自己打的指令也走这个判定 */
+export function looksLikeSing(text) {
+  if (parseSing(text)) return true
+  return parseSingAny(text)
+}
+
 /** 「首雨爱」「一首雨爱」这种把量词吃进歌名的情况，剥掉 */
 function strip(name) {
   let n = String(name || '').trim()

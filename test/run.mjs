@@ -11,7 +11,7 @@ import { mkdtempSync, writeFileSync, readFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { normalize, DEFAULTS, handoffLeftSec } from '../bridge/config.mjs'
-import { parseSing, parseSingAny } from '../bridge/sing.mjs'
+import { parseSing, parseSingAny, looksLikeSing } from '../bridge/sing.mjs'
 import { noteSilentTurn } from '../bridge/reply.mjs'
 import { ensurePersonaDir, fullPersona, shortPersona, anchor, personaVersion, personaSizes } from '../bridge/persona.mjs'
 import { parseReply, looksLost } from '../bridge/reply.mjs'
@@ -175,6 +175,12 @@ console.log('\n【协议常量】')
   ok('消息类型齐全', ['ready', 'log', 'reply', 'event', 'cmd', 'shutdown'].every((k) => Object.values(T).includes(k)))
   ok('动作表里有 send/status/pause', ['send', 'status', 'pause'].every((a) => ACTIONS.includes(a)))
 }
+
+// 主人自己打的点唱令（out=true）也要执行（2026-11-05 00:08 被 handoff 吞了）
+ok('「小鲸鱼给他唱首歌」算点唱指令', looksLikeSing('小鲸鱼给他唱首歌') === true)
+ok('「唱首雨爱」算点唱指令', looksLikeSing('唱首雨爱') === true)
+ok('「在吗」不算点唱指令', looksLikeSing('在吗') === false)
+ok('「你唱得真好」不算点唱指令', looksLikeSing('你唱得真好') === false)
 
 // 沉默窗口里的对话要进上下文（主人 2026-11-05：「我让她记录就是这个意思」）
 {

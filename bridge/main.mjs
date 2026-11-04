@@ -27,7 +27,7 @@ import { describeMessage } from './media.mjs'
 import { generateReply, seedContext, contextInfo, clearContext, noteSilentTurn } from './reply.mjs'
 import { sendSticker, stickerCount } from './sticker.mjs'
 import { speak, wantsVoice, randomVoice } from './voice.mjs'
-import { parseSing, parseSingAny, runSing } from './sing.mjs'
+import { parseSing, parseSingAny, looksLikeSing, runSing } from './sing.mjs'
 import { backfill } from './backfill.mjs'
 import { startControl } from './control.mjs'
 import { makeObserver, loadObserveCfg } from './observe.mjs'
@@ -174,6 +174,16 @@ async function handleOne(m, event) {
       // → 主人正在亲自聊，进入「只看不说」窗口
       if (!sentIds.has(m.id)) {
         const cid = String(m.chatId ?? '')
+        // 主人自己打的**点唱指令**要执行，不能当成"他在聊"吞掉
+        // （2026-11-05 00:08：主人在烛天私聊里说「小鲸鱼给他唱首歌」，被 handoff 吞了）
+        const myText = String(m.message ?? m.text ?? '').trim()
+        const mySong = parseSing(myText)
+        const myAny = !mySong && looksLikeSing(myText)
+        if (mySong || myAny) {
+          log(`[handoff] 主人在 ${cid} 下了点唱令：${mySong || '随便一首'}`)
+          if (cfg.mode === 'auto') void doSing(cid, mySong, myAny)
+          return
+        }
         const before = inHandoff(cid, cfg)
         selfTalkAt.set(cid, Date.now())
         if (!before) log(`[handoff] 主人在 ${cid} 亲自聊，${cfg?.direct?.handoffMin ?? 10} 分钟内不插话`)
