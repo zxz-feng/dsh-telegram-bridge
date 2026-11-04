@@ -29,7 +29,9 @@ export const DEFAULTS = {
   personaDir: '',                               // 留空 = <DSH_HOME>/persona
   personaName: '小鲸鱼',
   personaIdentity: '你是 DeepSeek 小鲸鱼（蓝白配色、蓝色长发、鲸鱼尾巴的 Q 版形象），替号主看号代聊。',
-  personaLead: '替号主看号代聊，不是本人',
+  // 每轮都会拼进精简人设和锚定。这里写"不是本人"会让模型每句都交代一遍身份，
+  // 变成复读机（2026-11-04 主人点名要求去掉）。身份只在被直接问时承认一次。
+  personaLead: '',
   llm: {
     baseUrl: '',                                // OpenAI 兼容；留空按 detectLlmBase() 猜
     apiKey: '',

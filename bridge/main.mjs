@@ -26,6 +26,8 @@ import { ensurePersonaDir, personaVersion, personaSizes } from './persona.mjs'
 import { describeMessage } from './media.mjs'
 import { generateReply, seedContext, contextInfo, clearContext } from './reply.mjs'
 import { sendSticker, stickerCount } from './sticker.mjs'
+import { speak, wantsVoice, randomVoice } from './voice.mjs'
+import { parseSing, runSing } from './sing.mjs'
 import { backfill } from './backfill.mjs'
 import { startControl } from './control.mjs'
 import { makeObserver, loadObserveCfg } from './observe.mjs'
@@ -73,6 +75,26 @@ function send(m, cb) {
 }
 
 // ── 发送 ──────────────────────────────────────────────
+const SINGING = new Set()
+
+/** 点唱：B站找源 → 本地 /sing 换声 → 发语音条。全程 1~5 分钟，先回一句。 */
+async function doSing(chatId, song) {
+  const key = String(chatId)
+  if (SINGING.has(key)) { await safeSend(chatId, '上一首还没录完呢').catch(() => {}); return }
+  SINGING.add(key)
+  try {
+    log(`  🎵 点唱《${song}》开始`)
+    await safeSend(chatId, `《${song}》啊，等我找找`)
+    const r = await runSing(song)
+    if (!r.ok) { await safeSend(chatId, `没找着能唱的版本…（${r.reason}）`).catch(() => {}); log(`  🎵 失败：${r.reason}`); return }
+    log(`  🎵 换好了（${(r.ms / 1000).toFixed(0)}s）${r.file}`)
+    await client.sendFile(chatId, { file: r.file, voiceNote: true })
+  } catch (e) {
+    log('  🎵 点唱失败：', e?.message ?? e)
+    await safeSend(chatId, '卡住了，没唱出来').catch(() => {})
+  } finally { SINGING.delete(key) }
+}
+
 async function safeSend(peer, text) {
   for (let i = 0; i < 3; i += 1) {
     try {
@@ -159,6 +181,18 @@ async function handleOne(m, event) {
       return
     }
     if (!d.ok) return
+
+    // 点唱：识别到歌名就直接走 B站 + 本地换声，不劳烦模型
+    const song = parseSing(desc.text)
+    if (song) {
+      log(`[${new Date().toLocaleTimeString('zh-CN')}] [${chatId}] ${desc.text}  (点唱《${song}》)`)
+      appendFileSync(INBOX, JSON.stringify({
+        ts: new Date().toISOString(), chatId, senderId: String(m.senderId),
+        senderName: m.sender?.firstName ?? '对方', text: desc.text, kind: 'sing', msgId: m.id, mode: cfg.mode,
+      }) + '\n')
+      if (cfg.mode === 'auto') void doSing(chatId, song)
+      return
+    }
 
     counters.received += 1
     const peerName = m.sender?.firstName ?? '对方'
@@ -251,12 +285,21 @@ async function flushInner(chatId, entry) {
       await sleep(600 + Math.random() * 900)
       stickerSent = await sendSticker(HOME, client, chatId, result.stickers[0], { Api })
     }
+    let voiceSent = false
+    if (result.parts.length && (wantsVoice(combined) || randomVoice())) {
+      await sleep(500 + Math.random() * 900)
+      const v = await speak(result.parts.join('，'))
+      if (v) {
+        try { await client.sendFile(chatId, { file: v.path, voiceNote: true }); voiceSent = true; log(`  🎤 语音已发（${v.ms}ms）`) }
+        catch (e) { log('  🎤 语音发送失败：', e?.message ?? e) }
+      }
+    }
     appendFileSync(DRAFTS, JSON.stringify({
       ts: new Date().toISOString(), chatId, incoming: combined, draft: result.text,
-      parts: result.parts, stickers: result.stickers, stickerSent, status: 'sent',
+      parts: result.parts, stickers: result.stickers, stickerSent, voiceSent, status: 'sent',
     }) + '\n')
     counters.replied += 1
-    log(`  ✅ 已发出（${result.parts.length} 条文字${stickerSent ? ' + 1 张表情' : ''}）`)
+    log(`  ✅ 已发出（${result.parts.length} 条文字${stickerSent ? ' + 1 张表情' : ''}${voiceSent ? ' + 1 条语音' : ''}）`)
   } else {
     appendFileSync(DRAFTS, JSON.stringify({
       ts: new Date().toISOString(), chatId, incoming: combined, draft: result.text,

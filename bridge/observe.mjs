@@ -297,7 +297,8 @@ export function makeObserver({ home, log = () => {} }) {
         } catch { /* 坏行 */ }
       }
     }
-    if (chunks.length < 20) return
+    // 原来写 20：群一天说不到 20 句就永远不出摘要（11-03 只有 19 条，白等一天）
+    if (chunks.length < 6) return
 
     digestBusy = true
     try {
