@@ -10,7 +10,7 @@
 import { mkdtempSync, writeFileSync, readFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { normalize, DEFAULTS } from '../bridge/config.mjs'
+import { normalize, DEFAULTS, handoffLeftSec } from '../bridge/config.mjs'
 import { parseSing, parseSingAny } from '../bridge/sing.mjs'
 import { ensurePersonaDir, fullPersona, shortPersona, anchor, personaVersion, personaSizes } from '../bridge/persona.mjs'
 import { parseReply, looksLost } from '../bridge/reply.mjs'
@@ -173,6 +173,17 @@ console.log('\n【协议常量】')
 {
   ok('消息类型齐全', ['ready', 'log', 'reply', 'event', 'cmd', 'shutdown'].every((k) => Object.values(T).includes(k)))
   ok('动作表里有 send/status/pause', ['send', 'status', 'pause'].every((a) => ACTIONS.includes(a)))
+}
+
+// 主人亲自聊的沉默窗口（2026-11-04 主人交代：我在跟烛天聊的时候别插嘴）
+{
+  const now = 1_800_000_000_000
+  ok('刚说完 → 满 10 分钟窗口', handoffLeftSec(now, 10, now) === 600)
+  ok('过了 5 分钟 → 还剩 300 秒', handoffLeftSec(now - 5 * 60000, 10, now) === 300)
+  ok('过了 11 分钟 → 窗口结束', handoffLeftSec(now - 11 * 60000, 10, now) === 0)
+  ok('handoffMin=0 等于关掉', handoffLeftSec(now, 0, now) === 0)
+  ok('配置缺省是 10 分钟', normalize({}).direct.handoffMin === 10)
+  ok('配置能改（3 分钟）', normalize({ direct: { handoffMin: 3 } }).direct.handoffMin === 3)
 }
 
 // 泛点唱：不给歌名也要能唱（2026-11-04 主人要在 TG 里说「唱首歌」）

@@ -14,6 +14,19 @@ import { existsSync, renameSync } from 'node:fs'
 import { join } from 'node:path'
 import { readJson, writeJson } from '../lib/home.mjs'
 
+/**
+ * 「主人亲自在聊」还剩多少秒 —— 纯函数，方便单测。
+ * @param atMs  主人最后一条我方消息的时间戳（0 = 没聊过）
+ * @param mins  窗口长度（分钟，<=0 表示关掉这个行为）
+ * @param nowMs 现在
+ */
+export function handoffLeftSec(atMs, mins, nowMs = Date.now()) {
+  const m = Number(mins ?? 10)
+  if (!(m > 0) || !atMs) return 0
+  const left = m * 60 - (nowMs - Number(atMs)) / 1000
+  return left > 0 ? Math.ceil(left) : 0
+}
+
 export const DEFAULTS = {
   enabled: true,
   account: { apiId: 0, apiHash: '' },          // 从 my.telegram.org 申请；也可用 TG_API_ID/TG_API_HASH
@@ -24,6 +37,7 @@ export const DEFAULTS = {
     mode: 'allowlist',                          // allowlist | off
     users: [],                                  // 只回这些人的私信
     paused: [],                                 // 这些人照记录、不回复
+    handoffMin: 10,                             // 主人亲自聊过之后，多少分钟内不插话（0=关）
     labels: {},                                 // { "123456": "备注名" }
   },
   groups: { mode: 'off', chats: [] },           // 群聊默认关；mode=allowlist 才看 chats
@@ -94,6 +108,8 @@ export function normalize(raw = {}) {
       mode: r.direct?.mode === 'off' ? 'off' : 'allowlist',
       users: arr(r.direct?.users),
       paused: arr(r.direct?.paused),
+      // 主人亲自聊之后的沉默窗口（分钟）；0 或负数 = 关掉这个行为
+      handoffMin: Number.isFinite(Number(r.direct?.handoffMin)) ? Math.max(0, Number(r.direct.handoffMin)) : 10,
       labels: (r.direct?.labels && typeof r.direct.labels === 'object') ? r.direct.labels : {},
     },
     groups: {
@@ -157,6 +173,7 @@ export function migrateLegacy(home) {
       mode: old.direct?.mode ?? 'allowlist',
       users: old.direct?.users ?? [],
       paused: old.direct?.paused ?? [],
+      handoffMin: old.direct?.handoffMin ?? 10,
       labels: old.direct?.labels ?? {},
     },
     groups: { mode: old.groups?.mode ?? 'off', chats: old.groups?.chats ?? [] },

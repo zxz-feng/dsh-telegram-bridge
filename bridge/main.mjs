@@ -20,7 +20,7 @@ import { homedir } from 'node:os'
 import { NewMessage } from 'telegram/events/index.js'
 import { FloodWaitError } from 'telegram/errors/index.js'
 import { Api } from 'telegram'
-import { loadConfig, saveConfig } from './config.mjs'
+import { loadConfig, saveConfig, handoffLeftSec } from './config.mjs'
 import { makeClient, loadSession, hasSession } from './client.mjs'
 import { ensurePersonaDir, personaVersion, personaSizes } from './persona.mjs'
 import { describeMessage } from './media.mjs'
@@ -60,6 +60,14 @@ let lastActivityAt = Date.now()
 let control = { port: 0, close: () => {} }
 const seenIds = new Set()
 const sentIds = new Set()
+// 「主人自己正在聊」的会话 → 最后一条我方消息时间。
+// 用途：主人在别的设备上跟人聊天时，小鲸鱼只看不说话（见 inHandoff）
+const selfTalkAt = new Map()
+
+/** 主人是不是正亲自在这个会话里聊（最近 handoffMin 分钟内发过消息） */
+function inHandoff(chatId, cfg) {
+  return handoffLeftSec(selfTalkAt.get(String(chatId)) || 0, cfg?.direct?.handoffMin ?? 10)
+}
 const pending = new Map()      // chatId → { msgs, peerName, timer }
 const seededChats = new Set()
 const counters = { received: 0, replied: 0, failed: 0, skipped: 0 }
@@ -88,7 +96,8 @@ async function doSing(chatId, song, any = false) {
     const r = await runSing(song, { defaultSong: cfg.singDefault })
     if (!r.ok) { await safeSend(chatId, `没找着能唱的版本…（${r.reason}）`).catch(() => {}); log(`  🎵 失败：${r.reason}`); return }
     log(`  🎵 换好了（${(r.ms / 1000).toFixed(0)}s）${r.file}`)
-    await client.sendFile(chatId, { file: r.file, voiceNote: true })
+    const sentSong = await client.sendFile(chatId, { file: r.file, voiceNote: true })
+    if (sentSong?.id) sentIds.add(sentSong.id)
   } catch (e) {
     log('  🎵 点唱失败：', e?.message ?? e)
     await safeSend(chatId, '卡住了，没唱出来').catch(() => {})
@@ -160,7 +169,17 @@ async function handleOne(m, event) {
     } catch (e) { log('[observe]', e?.message ?? e) }
     // 收藏夹（Saved Messages）里自己发的消息 out=true，但那是我方的输入，得回；
     // 别的会话里 out=true 就是她自己发的，跳过。
-    if (m.out && String(m.chatId ?? '') !== String(client?.__selfId ?? '')) return
+    if (m.out && String(m.chatId ?? '') !== String(client?.__selfId ?? '')) {
+      // 这条是账号本人（手机/电脑版）发出去的，不是小鲸鱼发的
+      // → 主人正在亲自聊，进入「只看不说」窗口
+      if (!sentIds.has(m.id)) {
+        const cid = String(m.chatId ?? '')
+        const before = inHandoff(cid, cfg)
+        selfTalkAt.set(cid, Date.now())
+        if (!before) log(`[handoff] 主人在 ${cid} 亲自聊，${cfg?.direct?.handoffMin ?? 10} 分钟内不插话`)
+      }
+      return
+    }
     if (sentIds.has(m.id)) return
     if (m.sender?.bot === true) return
     seenIds.add(m.id)
@@ -171,6 +190,16 @@ async function handleOne(m, event) {
 
     const d = decision(event, m)
     const chatId = d.chatId ?? String(m.chatId ?? '')
+    const holdLeft = inHandoff(chatId, cfg)
+    if (holdLeft > 0 && !d.paused) {
+      // 主人在聊 → 看、记，但不说话（10 分钟滚动窗口）
+      appendFileSync(INBOX, JSON.stringify({
+        ts: new Date().toISOString(), chatId, senderId: String(m.senderId),
+        text: desc.text, kind: desc.kind, msgId: m.id, mode: 'handoff', holdLeft,
+      }) + '\n')
+      log(`  [handoff] ${chatId} 主人在聊，还剩 ${holdLeft}s，这条不回`)
+      return
+    }
     if (d.paused) {
       appendFileSync(INBOX, JSON.stringify({
         ts: new Date().toISOString(), chatId, senderId: String(m.senderId),
@@ -292,7 +321,11 @@ async function flushInner(chatId, entry) {
       await sleep(500 + Math.random() * 900)
       const v = await speak(result.parts.join('，'))
       if (v) {
-        try { await client.sendFile(chatId, { file: v.path, voiceNote: true }); voiceSent = true; log(`  🎤 语音已发（${v.ms}ms）`) }
+        try {
+          const sentV = await client.sendFile(chatId, { file: v.path, voiceNote: true })
+          if (sentV?.id) sentIds.add(sentV.id)
+          voiceSent = true; log(`  🎤 语音已发（${v.ms}ms）`)
+        }
         catch (e) { log('  🎤 语音发送失败：', e?.message ?? e) }
       }
     }
