@@ -186,6 +186,21 @@ export async function generateReply({ cfg, home, pdir, chatId, incoming, peerNam
   return { text: joined, parts, stickers, model, usage, personaFull: useFull }
 }
 
+/**
+ * 只记不答：把一轮对话塞进上下文（主人亲自聊的窗口里用）。
+ * 主人说的记成 assistant（这个号说的），对方说的记成 user —— 这样等窗口结束、
+ * 她再接话时，上下文里就有完整的一段「他们在聊什么」。
+ */
+export function noteSilentTurn({ home, chatId, from = '', text, cfg, selfSide = false }) {
+  const body = String(text ?? '').trim().slice(0, 400)
+  if (!body) return false
+  const store = loadStore(home, chatId)
+  if (selfSide) store.msgs.push({ role: 'assistant', content: body })
+  else store.msgs.push({ role: 'user', content: from ? `[${from}] ${body}` : body })
+  saveStore(home, chatId, store.pv, store.msgs, cfg.llm.maxTurns)
+  return true
+}
+
 /** 首次对话前注入真实聊天历史当背景（只在上下文为空时生效） */
 export function seedContext({ home, chatId, historyLines, peerName = '', maxTurns = 12 }) {
   const store = loadStore(home, chatId)

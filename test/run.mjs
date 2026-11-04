@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { normalize, DEFAULTS, handoffLeftSec } from '../bridge/config.mjs'
 import { parseSing, parseSingAny } from '../bridge/sing.mjs'
+import { noteSilentTurn } from '../bridge/reply.mjs'
 import { ensurePersonaDir, fullPersona, shortPersona, anchor, personaVersion, personaSizes } from '../bridge/persona.mjs'
 import { parseReply, looksLost } from '../bridge/reply.mjs'
 import { runChecks } from '../lib/health.mjs'
@@ -173,6 +174,20 @@ console.log('\n【协议常量】')
 {
   ok('消息类型齐全', ['ready', 'log', 'reply', 'event', 'cmd', 'shutdown'].every((k) => Object.values(T).includes(k)))
   ok('动作表里有 send/status/pause', ['send', 'status', 'pause'].every((a) => ACTIONS.includes(a)))
+}
+
+// 沉默窗口里的对话要进上下文（主人 2026-11-05：「我让她记录就是这个意思」）
+{
+  const home = mkdtempSync(join(tmpdir(), 'tg-handoff-'))
+  const cfg = normalize({})
+  noteSilentTurn({ home, chatId: '8079117108', from: '烛天', text: '在吗', cfg })
+  noteSilentTurn({ home, chatId: '8079117108', selfSide: true, text: '在，刚忙完', cfg })
+  noteSilentTurn({ home, chatId: '8079117108', from: '烛天', text: '晚上吃啥', cfg })
+  const st = JSON.parse(readFileSync(join(home, 'contexts', '8079117108.json'), 'utf8'))
+  ok('沉默期记了 3 条', st.msgs.length === 3)
+  ok('对方的话是 user 且带名字', st.msgs[0].role === 'user' && st.msgs[0].content.includes('烛天') && st.msgs[0].content.includes('在吗'))
+  ok('主人自己的话是 assistant', st.msgs[1].role === 'assistant' && st.msgs[1].content === '在，刚忙完')
+  ok('空文本不写', noteSilentTurn({ home, chatId: 'x', text: '  ', cfg }) === false)
 }
 
 // 主人亲自聊的沉默窗口（2026-11-04 主人交代：我在跟烛天聊的时候别插嘴）

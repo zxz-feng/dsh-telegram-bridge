@@ -24,7 +24,7 @@ import { loadConfig, saveConfig, handoffLeftSec } from './config.mjs'
 import { makeClient, loadSession, hasSession } from './client.mjs'
 import { ensurePersonaDir, personaVersion, personaSizes } from './persona.mjs'
 import { describeMessage } from './media.mjs'
-import { generateReply, seedContext, contextInfo, clearContext } from './reply.mjs'
+import { generateReply, seedContext, contextInfo, clearContext, noteSilentTurn } from './reply.mjs'
 import { sendSticker, stickerCount } from './sticker.mjs'
 import { speak, wantsVoice, randomVoice } from './voice.mjs'
 import { parseSing, parseSingAny, runSing } from './sing.mjs'
@@ -177,6 +177,14 @@ async function handleOne(m, event) {
         const before = inHandoff(cid, cfg)
         selfTalkAt.set(cid, Date.now())
         if (!before) log(`[handoff] 主人在 ${cid} 亲自聊，${cfg?.direct?.handoffMin ?? 10} 分钟内不插话`)
+        // 主人说的话也进上下文：窗口结束后她才知道刚才聊了什么
+        try {
+          noteSilentTurn({
+            home: HOME, chatId: cid, selfSide: true,
+            text: String(m.message ?? m.text ?? '').trim() || '[发了条消息]',
+            cfg,
+          })
+        } catch (e) { log('[handoff] 记主人那句失败:', e?.message ?? e) }
       }
       return
     }
@@ -197,7 +205,14 @@ async function handleOne(m, event) {
         ts: new Date().toISOString(), chatId, senderId: String(m.senderId),
         text: desc.text, kind: desc.kind, msgId: m.id, mode: 'handoff', holdLeft,
       }) + '\n')
-      log(`  [handoff] ${chatId} 主人在聊，还剩 ${holdLeft}s，这条不回`)
+      log(`  [handoff] ${chatId} 主人在聊，还剩 ${holdLeft}s，这条不回（已记进上下文）`)
+      try {
+        noteSilentTurn({
+          home: HOME, chatId,
+          from: m.sender?.firstName ?? m.sender?.title ?? '',
+          text: desc.text, cfg,
+        })
+      } catch (e) { log('[handoff] 记对方那句失败:', e?.message ?? e) }
       return
     }
     if (d.paused) {
