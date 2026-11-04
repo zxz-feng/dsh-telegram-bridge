@@ -7,8 +7,22 @@
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
 
-const SCRIPT = process.env.SING_SCRIPT || '/root/工位/qq-bridge/tools/sing-once.mjs';
+// 走仓库那份（带换声缓存 _herfull + index.json）；老的 /root/工位/qq-bridge 是 10-28 的旧副本
+const SCRIPT = process.env.SING_SCRIPT || '/root/工位/repos/dsh-qq-bridge/tools/sing-tg.mjs';
 const NODE = process.execPath;
+
+/**
+ * 「唱首歌」这种**不给歌名**的点唱 —— 从缓存曲库里挑一首。
+ * 单独一个函数，因为 parseSing 的语义是「返回歌名」，空串代表不是点歌。
+ */
+export function parseSingAny(text) {
+  const t = String(text || '').replace(/\s+/g, '')
+  if (!t || t.length > 30) return false
+  if (!/(唱|来|点|放|整|听)/.test(t)) return false
+  // 有具体歌名的交给 parseSing；这里只认「泛点唱」
+  return /^(?:小鲸鱼)?(?:你)?(?:给他|给她|给我|给咱|给大家)?(?:唱|来|点|放|整)(?:一?首|一?个|一?支|首歌|个歌|段|一曲)?歌?(?:吧|呗|呀|啊|嘛)?$/.test(t)
+    || /^(?:小鲸鱼)?(?:随便)?(?:唱|来|点|放)(?:一?首|一?个|首歌)(?:随便什么|随便|啥都行|什么都行)?(?:吧|呗)?$/.test(t)
+}
 
 /** 这句话是不是在点歌 */
 export function parseSing(text) {
@@ -31,10 +45,16 @@ export function parseSing(text) {
 /** 「首雨爱」「一首雨爱」这种把量词吃进歌名的情况，剥掉 */
 function strip(name) {
   let n = String(name || '').trim()
-  // 「唱得真好」「唱了起来」这种是动词补语，不是歌名
-  if (/^(?:得|的|到|起|完|过|着|了|真|好|不|一?下|一?遍)/.test(n)) return ''
+  // 「唱得真好」「唱了起来」这种是动词补语，不是歌名。
+  // ⚠️ 只认「补语本身」，不能一刀切首字：那样「起风了」会被当成"起…"毙掉
+  if (/^(?:得|的|到|起|完|过|着|了|真|好|不)(?:了|起来|出来|下去|一下|一遍|什么|啥)?$/.test(n)) return ''
+  // 「唱得真好」→ strip 后剩「得真好」；「唱一下」→「一下」
+  if (/^(?:得|的)/.test(n) && n.length <= 4) return ''
+  if (/^一?[下遍]$/.test(n)) return ''
   n = n.replace(/^(?:一?首|一?支|一?曲)\s*/, '')
   n = n.replace(/[的吧呗呀啊嘛]+$/, '')
+  // 「唱首歌」「唱个歌」剥完只剩个"歌"——那不是歌名，是泛点唱
+  if (/^(?:歌|首歌|个歌|曲子|曲|歌儿|首歌儿)$/.test(n.trim())) return ''
   return n.trim()
 }
 
@@ -42,10 +62,16 @@ function strip(name) {
  * 跑一次点唱
  * @returns {Promise<{ok:boolean, file?:string, title?:string, ms?:number, reason?:string}>}
  */
-export function runSing(song) {
+export function runSing(song, opts = {}) {
   return new Promise((resolve) => {
     const t0 = Date.now();
-    execFile(NODE, [SCRIPT, song], { timeout: 420_000, maxBuffer: 4 << 20 },
+    const env = {
+      ...process.env,
+      // 和 QQ 桥看同一份缓存，否则 TG 这边永远是空的
+      MEDIA_DIR: process.env.MEDIA_DIR || '/root/工位/qq-bridge/napcat-data/media',
+      SING_DEFAULT: String(opts.defaultSong || process.env.SING_DEFAULT || ''),
+    }
+    execFile(NODE, [SCRIPT, song || ''], { timeout: 420_000, maxBuffer: 4 << 20, env },
       (err, stdout, stderr) => {
         const line = String(stdout || '').trim().split('\n').filter(Boolean).pop() || '';
         try {

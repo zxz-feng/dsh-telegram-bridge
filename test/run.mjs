@@ -11,6 +11,7 @@ import { mkdtempSync, writeFileSync, readFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { normalize, DEFAULTS } from '../bridge/config.mjs'
+import { parseSing, parseSingAny } from '../bridge/sing.mjs'
 import { ensurePersonaDir, fullPersona, shortPersona, anchor, personaVersion, personaSizes } from '../bridge/persona.mjs'
 import { parseReply, looksLost } from '../bridge/reply.mjs'
 import { runChecks } from '../lib/health.mjs'
@@ -173,6 +174,13 @@ console.log('\n【协议常量】')
   ok('消息类型齐全', ['ready', 'log', 'reply', 'event', 'cmd', 'shutdown'].every((k) => Object.values(T).includes(k)))
   ok('动作表里有 send/status/pause', ['send', 'status', 'pause'].every((a) => ACTIONS.includes(a)))
 }
+
+// 泛点唱：不给歌名也要能唱（2026-11-04 主人要在 TG 里说「唱首歌」）
+ok('「小鲸鱼给他唱首歌」是泛点唱', parseSingAny('小鲸鱼给他唱首歌') === true)
+ok('「唱首歌」不是歌名，是泛点唱', parseSing('唱首歌') === '' && parseSingAny('唱首歌') === true)
+ok('「唱首起风了」不许被动词补语规则误杀', parseSing('唱首起风了') === '起风了')
+ok('「唱得真好」不是歌', parseSing('唱得真好') === '')
+ok('「唱首雨爱」仍然是具体歌名', parseSing('唱首雨爱') === '雨爱')
 
 // ── 汇总 ──────────────────────────────────────────────
 console.log(`\n=== ${pass} 通过 / ${fail} 失败 ===`)

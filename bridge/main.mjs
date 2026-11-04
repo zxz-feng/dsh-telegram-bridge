@@ -27,7 +27,7 @@ import { describeMessage } from './media.mjs'
 import { generateReply, seedContext, contextInfo, clearContext } from './reply.mjs'
 import { sendSticker, stickerCount } from './sticker.mjs'
 import { speak, wantsVoice, randomVoice } from './voice.mjs'
-import { parseSing, runSing } from './sing.mjs'
+import { parseSing, parseSingAny, runSing } from './sing.mjs'
 import { backfill } from './backfill.mjs'
 import { startControl } from './control.mjs'
 import { makeObserver, loadObserveCfg } from './observe.mjs'
@@ -78,14 +78,14 @@ function send(m, cb) {
 const SINGING = new Set()
 
 /** 点唱：B站找源 → 本地 /sing 换声 → 发语音条。全程 1~5 分钟，先回一句。 */
-async function doSing(chatId, song) {
+async function doSing(chatId, song, any = false) {
   const key = String(chatId)
   if (SINGING.has(key)) { await safeSend(chatId, '上一首还没录完呢').catch(() => {}); return }
   SINGING.add(key)
   try {
-    log(`  🎵 点唱《${song}》开始`)
-    await safeSend(chatId, `《${song}》啊，等我找找`)
-    const r = await runSing(song)
+    log(`  🎵 点唱${any ? '（不限歌名，走缓存）' : `《${song}》`}开始`)
+    await safeSend(chatId, any ? '行，我挑一首我唱过的' : `《${song}》啊，等我找找`)
+    const r = await runSing(song, { defaultSong: cfg.singDefault })
     if (!r.ok) { await safeSend(chatId, `没找着能唱的版本…（${r.reason}）`).catch(() => {}); log(`  🎵 失败：${r.reason}`); return }
     log(`  🎵 换好了（${(r.ms / 1000).toFixed(0)}s）${r.file}`)
     await client.sendFile(chatId, { file: r.file, voiceNote: true })
@@ -184,13 +184,15 @@ async function handleOne(m, event) {
 
     // 点唱：识别到歌名就直接走 B站 + 本地换声，不劳烦模型
     const song = parseSing(desc.text)
-    if (song) {
-      log(`[${new Date().toLocaleTimeString('zh-CN')}] [${chatId}] ${desc.text}  (点唱《${song}》)`)
+    // 「唱首歌」不给歌名 → 从缓存曲库挑一首（雨爱这种唱过的歌秒回）
+    const anySing = !song && parseSingAny(desc.text)
+    if (song || anySing) {
+      log(`[${new Date().toLocaleTimeString('zh-CN')}] [${chatId}] ${desc.text}  (点唱${song ? `《${song}》` : '·任意'}）`)
       appendFileSync(INBOX, JSON.stringify({
         ts: new Date().toISOString(), chatId, senderId: String(m.senderId),
         senderName: m.sender?.firstName ?? '对方', text: desc.text, kind: 'sing', msgId: m.id, mode: cfg.mode,
       }) + '\n')
-      if (cfg.mode === 'auto') void doSing(chatId, song)
+      if (cfg.mode === 'auto') void doSing(chatId, song, anySing)
       return
     }
 

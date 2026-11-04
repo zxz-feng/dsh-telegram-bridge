@@ -19,6 +19,7 @@ export const DEFAULTS = {
   account: { apiId: 0, apiHash: '' },          // 从 my.telegram.org 申请；也可用 TG_API_ID/TG_API_HASH
   socksUrl: '',                                 // 留空 = 直连；例：socks5://127.0.0.1:17890
   mode: 'auto',                                 // auto | draft | confirm
+  singDefault: '',                              // 「唱首歌」不给歌名时优先唱的（留空 = 最近唱过的）
   direct: {
     mode: 'allowlist',                          // allowlist | off
     users: [],                                  // 只回这些人的私信
